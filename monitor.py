@@ -76,7 +76,7 @@ def generate_table(metrics):
     else:
         memory_status = "[red]Critique[/red]"
 
-    table.add_row("Mémoire", f"{memory_usage}%", memory_status)
+    table.add_row("Memory", f"{memory_usage}%", memory_status)
 
     # Logique d'affichage pour le disque
     disk_usage = metrics["disk"]["percent"]
@@ -87,7 +87,7 @@ def generate_table(metrics):
     else:
         disk_status = "[red]Critique[/red]"
 
-    table.add_row("Disque (/)", f"{disk_usage}%", disk_status)
+    table.add_row("Disk (/)", f"{disk_usage}%", disk_status)
 
     return table
 
