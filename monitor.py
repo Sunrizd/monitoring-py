@@ -1,5 +1,7 @@
 import psutil
 import json
+import socket
+import datetime
 from time import sleep
 from rich import print
 from rich.console import Console
@@ -11,8 +13,12 @@ def get_metrics():
     cpu_usage = psutil.cpu_percent(interval=1)
     memory_usage = psutil.virtual_memory()
     disk_usage = psutil.disk_usage('/')
-
+    host_name = socket.gethostname()
+    timestamp = datetime.datetime.now().strftime("%H:%M:%S | %d-%m-%Y")
+    
     metrics = {
+            "host_name": host_name,
+            "timestamp": timestamp,
             "cpu": {
                 "usage_percent": cpu_usage
             },
@@ -30,12 +36,21 @@ def get_metrics():
             }
         }
 
+    
     return metrics
 
 
 def generate_table(metrics):
     console = Console()
-    table = Table(title="System Monitoring Dashboard")
+    
+    nom_machine = metrics["host_name"]
+    heure_releve = metrics["timestamp"]
+
+    table = Table(
+        title=f"System Dashboard - [bold blue]{nom_machine}[/bold blue]",
+        caption=f"Last refresh\n{heure_releve}",
+        caption_style="dim"
+    )
 
     table.add_column("Composant", justify="left", style="cyan", no_wrap=True)
     table.add_column("Utilisation", justify="right", style="magenta")
@@ -73,7 +88,6 @@ def generate_table(metrics):
         disk_status = "[red]Critique[/red]"
 
     table.add_row("Disque (/)", f"{disk_usage}%", disk_status)
-
 
     return table
 
