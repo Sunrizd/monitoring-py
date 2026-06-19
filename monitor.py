@@ -1,8 +1,10 @@
 import psutil
 import json
+from time import sleep
 from rich import print
 from rich.console import Console
 from rich.table import Table
+from rich.live import Live
 
 def get_metrics():
 
@@ -31,7 +33,7 @@ def get_metrics():
     return metrics
 
 
-def display_dashboard(metrics):
+def generate_table(metrics):
     console = Console()
     table = Table(title="System Monitoring Dashboard")
 
@@ -70,11 +72,18 @@ def display_dashboard(metrics):
     else:
         disk_status = "[red]Critique[/red]"
 
-    table.add_row("Disque", f"{disk_usage}%", disk_status)
+    table.add_row("Disque (/)", f"{disk_usage}%", disk_status)
 
-    # Rendu final
-    console.print(table)
+
+    return table
 
 if __name__ == "__main__":
-    data = get_metrics()
-    display_dashboard(data)
+    initial_metrics = get_metrics()
+    
+    with Live(generate_table(initial_metrics), refresh_per_second=4) as live:
+        try:
+            while True:
+                new_metrics = get_metrics() 
+                live.update(generate_table(new_metrics))
+        except KeyboardInterrupt:
+            pass
