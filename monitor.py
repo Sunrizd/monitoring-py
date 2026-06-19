@@ -1,116 +1,175 @@
 import psutil
-import json
 import socket
 import datetime
-from time import sleep
-from rich import print
-from rich.console import Console
+import time
+import platform
+import ipaddress
+from rich.console import Console, Group
 from rich.table import Table
+from rich.panel import Panel
 from rich.live import Live
 
-
-def get_local_ip():
+def get_os_name():
     try:
-        # Création d'un socket UDP pour forcer la résolution de l'IP locale via la table de routage
+        with open('/etc/os-release', 'r') as f:
+            for line in f:
+                if line.startswith('PRETTY_NAME='):
+                    return line.split('=')[1].strip().strip('"')
+    except Exception:
+        pass
+    return platform.system()
+
+def get_cpu_model():
+    try:
+        with open('/proc/cpuinfo', 'r') as f:
+            for line in f:
+                if 'model name' in line:
+                    return line.split(':')[1].strip()
+    except Exception:
+        pass
+    return platform.processor()
+
+def get_network_info():
+    ip = "127.0.0.1"
+    mask = "255.0.0.0"
+    cidr = "8"
+    try:
+        # Résolution de l'IP de routage local
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("8.8.8.8", 80))
-            return s.getsockname()[0]
+            ip = s.getsockname()[0]
+        
+        # Corrélation pour trouver le masque et calcul du CIDR
+        for interface, addrs in psutil.net_if_addrs().items():
+            for addr in addrs:
+                if addr.address == ip:
+                    mask = addr.netmask
+                    cidr = str(ipaddress.IPv4Network(f'0.0.0.0/{mask}').prefixlen)
+                    break
     except Exception:
-        return "127.0.0.1"
+        pass
+    return ip, mask, cidr
 
 def get_metrics():
-
+    # Données dynamiques d'utilisation
     cpu_usage = psutil.cpu_percent(interval=1)
-    memory_usage = psutil.virtual_memory()
-    disk_usage = psutil.disk_usage('/')
+    
+    # Extraction de la fréquence (Gestion de l'indisponibilité sur certaines VM)
+    cpu_freq = psutil.cpu_freq()
+    freq_str = f"{round(cpu_freq.current / 1000, 2)} GHz" if cpu_freq else "N/A"
+    
+    memory = psutil.virtual_memory()
+    swap = psutil.swap_memory()
+    disk = psutil.disk_usage('/')
+    
+    # Données d'identité et réseau
     host_name = socket.gethostname()
+    local_ip, subnet_mask, cidr = get_network_info()
     timestamp = datetime.datetime.now().strftime("%H:%M:%S | %d-%m-%Y")
-    local_ip = get_local_ip()
+    
+    # Données système
+    os_name = get_os_name()
+    kernel_version = platform.release()
+    cpu_model = get_cpu_model()
+    
+    # Calcul de l'uptime
+    boot_time = psutil.boot_time()
+    uptime_seconds = int(time.time() - boot_time)
+    uptime_str = str(datetime.timedelta(seconds=uptime_seconds))
 
+    # Structuration du Payload
     metrics = {
+        "identity": {
             "host_name": host_name,
-            "timestamp": timestamp,
+            "os": os_name,
+            "kernel": kernel_version,
+            "cpu_model": cpu_model,
+            "uptime": uptime_str,
+            "timestamp": timestamp
+        },
+        "network": {
             "local_ip": local_ip,
-            "cpu": {
-                "usage_percent": cpu_usage
-            },
-            "memory": {
-                "total_gb": round(memory_usage.total / (1024 ** 3), 2),
-                "available_gb": round(memory_usage.available / (1024 ** 3), 2),
-                "used_gb": round(memory_usage.used / (1024 ** 3), 2),
-                "percent": memory_usage.percent
-            },
-            "disk": {
-                "total_gb": round(disk_usage.total / (1024 ** 3), 2),
-                "used_gb": round(disk_usage.used / (1024 ** 3), 2),
-                "free_gb": round(disk_usage.free / (1024 ** 3), 2),
-                "percent": disk_usage.percent
-            }
+            "subnet_mask": subnet_mask,
+            "cidr": cidr
+        },
+        "cpu": {
+            "usage_percent": cpu_usage,
+            "clock_speed": freq_str
+        },
+        "memory": {
+            "total_gb": round(memory.total / (1024 ** 3), 2),
+            "used_gb": round(memory.used / (1024 ** 3), 2),
+            "percent": memory.percent
+        },
+        "swap": {
+            "total_gb": round(swap.total / (1024 ** 3), 2),
+            "used_gb": round(swap.used / (1024 ** 3), 2),
+            "percent": swap.percent
+        },
+        "disk": {
+            "total_gb": round(disk.total / (1024 ** 3), 2),
+            "used_gb": round(disk.used / (1024 ** 3), 2),
+            "percent": disk.percent
         }
-
+    }
     
     return metrics
 
+def generate_dashboard(metrics):
+    ident = metrics["identity"]
+    net = metrics["network"]
 
-def generate_table(metrics):
-    console = Console()
+    # --- Composant 1 : Panneau d'Information Statique ---
+    info_text = (
+        f"[cyan]OS:[/cyan] {ident['os']}  |  [cyan]Kernel:[/cyan] {ident['kernel']}  |  [cyan]Uptime:[/cyan] {ident['uptime']}\n"
+        f"[cyan]CPU:[/cyan] {ident['cpu_model']}\n"
+        f"[cyan]Network:[/cyan] {net['local_ip']}/{net['cidr']} ({net['subnet_mask']})"
+    )
     
-    nom_machine = metrics["host_name"]
-    ip_machine = metrics["local_ip"]
-    heure_releve = metrics["timestamp"]
-
-    table = Table(
-        title=f"System Dashboard\n[bold blue]{nom_machine}[/bold blue] @ [green]{ip_machine}[/green]",
-        caption=f"Last refresh\n{heure_releve}",
-        caption_style="dim"
+    info_panel = Panel(
+        info_text, 
+        title=f"[bold blue]{ident['host_name']}[/bold blue]", 
+        expand=False, 
+        border_style="blue"
     )
 
-    table.add_column("Composant", justify="left", style="cyan", no_wrap=True)
-    table.add_column("Utilisation", justify="right", style="magenta")
-    table.add_column("Statut", justify="center")
+    # --- Composant 2 : Tableau de Télémétrie Dynamique ---
+    table = Table(caption=f"Last refresh\n{ident['timestamp']}", caption_style="dim")
 
-    # Logique d'affichage pour le CPU
-    cpu_usage = metrics["cpu"]["usage_percent"]
-    if cpu_usage < 60:
-        cpu_status = "[green]OK[/green]"
-    elif cpu_usage < 80:
-        cpu_status = "[yellow]Avertissement[/yellow]"
-    else:
-        cpu_status = "[red]Critique[/red]"
-        
-    table.add_row("CPU", f"{cpu_usage}%", cpu_status)
+    table.add_column("Component", justify="left", style="cyan", no_wrap=True)
+    table.add_column("Values", justify="left", style="magenta")
+    table.add_column("Usage %", justify="right", style="magenta")
+    table.add_column("Status", justify="center")
 
-    # Logique d'affichage pour la mémoire
-    memory_usage = metrics["memory"]["percent"]
-    if memory_usage < 60:
-        memory_status = "[green]OK[/green]"
-    elif memory_usage < 80:
-        memory_status = "[yellow]Avertissement[/yellow]"
-    else:
-        memory_status = "[red]Critique[/red]"
+    # CPU
+    cpu = metrics["cpu"]
+    cpu_stat = "[green]OK[/green]" if cpu["usage_percent"] < 60 else "[yellow]Warn[/yellow]" if cpu["usage_percent"] < 80 else "[red]Crit[/red]"
+    table.add_row("CPU", cpu["clock_speed"], f"{cpu['usage_percent']}%", cpu_stat)
 
-    table.add_row("Memory", f"{memory_usage}%", memory_status)
+    # Memory
+    ram = metrics["memory"]
+    ram_stat = "[green]OK[/green]" if ram["percent"] < 60 else "[yellow]Warn[/yellow]" if ram["percent"] < 80 else "[red]Crit[/red]"
+    table.add_row("Memory", f"{ram['used_gb']} GB / {ram['total_gb']} GB", f"{ram['percent']}%", ram_stat)
 
-    # Logique d'affichage pour le disque
-    disk_usage = metrics["disk"]["percent"]
-    if disk_usage < 60:
-        disk_status = "[green]OK[/green]"
-    elif disk_usage < 80:
-        disk_status = "[yellow]Avertissement[/yellow]"
-    else:
-        disk_status = "[red]Critique[/red]"
+    # Swap
+    swap = metrics["swap"]
+    swap_stat = "[green]OK[/green]" if swap["percent"] < 60 else "[yellow]Warn[/yellow]" if swap["percent"] < 80 else "[red]Crit[/red]"
+    table.add_row("Swap", f"{swap['used_gb']} GB / {swap['total_gb']} GB", f"{swap['percent']}%", swap_stat)
 
-    table.add_row("Disk (/)", f"{disk_usage}%", disk_status)
+    # Disk
+    disk = metrics["disk"]
+    disk_stat = "[green]OK[/green]" if disk["percent"] < 60 else "[yellow]Warn[/yellow]" if disk["percent"] < 80 else "[red]Crit[/red]"
+    table.add_row("Disk (/)", f"{disk['used_gb']} GB / {disk['total_gb']} GB", f"{disk['percent']}%", disk_stat)
 
-    return table
+    return Group(info_panel, table)
 
 if __name__ == "__main__":
     initial_metrics = get_metrics()
     
-    with Live(generate_table(initial_metrics), refresh_per_second=4) as live:
+    with Live(generate_dashboard(initial_metrics), refresh_per_second=4) as live:
         try:
             while True:
                 new_metrics = get_metrics() 
-                live.update(generate_table(new_metrics))
+                live.update(generate_dashboard(new_metrics))
         except KeyboardInterrupt:
             pass
