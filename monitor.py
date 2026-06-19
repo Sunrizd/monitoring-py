@@ -8,6 +8,16 @@ from rich.console import Console
 from rich.table import Table
 from rich.live import Live
 
+
+def get_local_ip():
+    try:
+        # Création d'un socket UDP pour forcer la résolution de l'IP locale via la table de routage
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except Exception:
+        return "127.0.0.1"
+
 def get_metrics():
 
     cpu_usage = psutil.cpu_percent(interval=1)
@@ -15,10 +25,12 @@ def get_metrics():
     disk_usage = psutil.disk_usage('/')
     host_name = socket.gethostname()
     timestamp = datetime.datetime.now().strftime("%H:%M:%S | %d-%m-%Y")
-    
+    local_ip = get_local_ip()
+
     metrics = {
             "host_name": host_name,
             "timestamp": timestamp,
+            "local_ip": local_ip,
             "cpu": {
                 "usage_percent": cpu_usage
             },
@@ -44,10 +56,11 @@ def generate_table(metrics):
     console = Console()
     
     nom_machine = metrics["host_name"]
+    ip_machine = metrics["local_ip"]
     heure_releve = metrics["timestamp"]
 
     table = Table(
-        title=f"System Dashboard - [bold blue]{nom_machine}[/bold blue]",
+        title=f"System Dashboard\n[bold blue]{nom_machine}[/bold blue] @ [green]{ip_machine}[/green]",
         caption=f"Last refresh\n{heure_releve}",
         caption_style="dim"
     )

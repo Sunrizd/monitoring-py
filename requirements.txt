@@ -1,5 +1,8 @@
+evdev==1.9.3
 markdown-it-py==4.2.0
 mdurl==0.1.2
 psutil==7.2.2
 Pygments==2.20.0
+python-xlib==0.33
 rich==15.0.0
+six==1.17.0
