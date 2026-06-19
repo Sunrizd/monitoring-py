@@ -1,5 +1,8 @@
 import psutil
 import json
+from rich import print
+from rich.console import Console
+from rich.table import Table
 
 def get_metrics():
 
@@ -28,8 +31,50 @@ def get_metrics():
     return metrics
 
 
+def display_dashboard(metrics):
+    console = Console()
+    table = Table(title="System Monitoring Dashboard")
 
+    table.add_column("Composant", justify="left", style="cyan", no_wrap=True)
+    table.add_column("Utilisation", justify="right", style="magenta")
+    table.add_column("Statut", justify="center")
 
-print("Démarrage de la collecte...")
-metrics = get_metrics()
-print(json.dumps(metrics, indent=4))
+    # Logique d'affichage pour le CPU
+    cpu_usage = metrics["cpu"]["usage_percent"]
+    if cpu_usage < 60:
+        cpu_status = "[green]OK[/green]"
+    elif cpu_usage < 80:
+        cpu_status = "[yellow]Avertissement[/yellow]"
+    else:
+        cpu_status = "[red]Critique[/red]"
+        
+    table.add_row("CPU", f"{cpu_usage}%", cpu_status)
+
+    # Logique d'affichage pour la mémoire
+    memory_usage = metrics["memory"]["percent"]
+    if memory_usage < 60:
+        memory_status = "[green]OK[/green]"
+    elif memory_usage < 80:
+        memory_status = "[yellow]Avertissement[/yellow]"
+    else:
+        memory_status = "[red]Critique[/red]"
+
+    table.add_row("Mémoire", f"{memory_usage}%", memory_status)
+
+    # Logique d'affichage pour le disque
+    disk_usage = metrics["disk"]["percent"]
+    if disk_usage < 60:
+        disk_status = "[green]OK[/green]"
+    elif disk_usage < 80:
+        disk_status = "[yellow]Avertissement[/yellow]"
+    else:
+        disk_status = "[red]Critique[/red]"
+
+    table.add_row("Disque", f"{disk_usage}%", disk_status)
+
+    # Rendu final
+    console.print(table)
+
+if __name__ == "__main__":
+    data = get_metrics()
+    display_dashboard(data)
